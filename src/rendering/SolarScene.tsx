@@ -1,11 +1,14 @@
 import { Component, Suspense, useEffect, useMemo, useRef, type PropsWithChildren } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls, Stars, Html, useTexture } from '@react-three/drei'
-import { DoubleSide, Group, Mesh, MeshBasicMaterial, Texture, Vector3 } from 'three'
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
+import { DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Texture, Vector3 } from 'three'
 import { BODY_CATALOG, type BodyDefinition, type BodyId } from '../domain/bodies'
-import { getSolarFrame } from '../state/solarStore'
+import { getSolarFrame, useSolarStore } from '../state/solarStore'
 import { getRenderDiagnostics, installDiagnosticsGetter, publishRenderDiagnostics } from './debugBridge'
 import { configureTexture, MAX_ANISOTROPY, MAX_DPR, QUALITY_TIERS, TEXTURE_CATALOG } from './textureCatalog'
+import { BlackHole } from '../effects/BlackHole'
+import { PointerGravity, pointerGravityPosition } from '../interactions/PointerGravity'
 
 export const DIAGNOSTICS_INTERVAL_SECONDS = 0.25
 const FULL_TURN_RADIANS = Math.PI * 2
@@ -55,14 +58,18 @@ function Planet({ body, texture, selected, onSelect }: { body: BodyDefinition; t
   const state = simulation.getBodyState(body.id)
   const radius = body.presentationRadius * body.presentationScale
   const target = useMemo(() => new Vector3(), [])
+  const source = useMemo(() => new Vector3(), [])
   useFrame((_, delta) => {
     const current = simulation.getBodyState(body.id)
     if (!mesh.current) return
     target.set(current.x, current.y, current.z)
     mesh.current.position.lerp(target, 1 - Math.pow(0.0001, delta))
-    mesh.current.rotation.y = current.rotation
+    source.copy(pointerGravityPosition)
     const fadeScale = current.shrink * (0.98 + current.tidalElongation * 0.02)
-    mesh.current.scale.setScalar(fadeScale)
+    const stretch = 1 + Math.max(0, current.tidalElongation - 1) * 0.38
+    const angleToSource = Math.atan2(source.x - current.x, source.z - current.z)
+    mesh.current.rotation.set(0, current.absorptionStage === 'none' ? current.rotation : angleToSource, current.absorptionStage === 'none' ? 0 : current.rotation * 0.1)
+    mesh.current.scale.set(fadeScale, fadeScale, fadeScale * stretch)
     const material = mesh.current.material
     if (!Array.isArray(material) && 'opacity' in material) (material as MeshBasicMaterial).opacity = current.fade
   })
@@ -74,6 +81,7 @@ function Planet({ body, texture, selected, onSelect }: { body: BodyDefinition; t
 
 function SaturnRings({ texture }: { texture: Texture | null }) {
   const group = useRef<Group>(null)
+  const material = useRef<MeshStandardMaterial>(null)
   const target = useMemo(() => new Vector3(), [])
   const simulation = getSolarFrame()
   useFrame((_, delta) => {
@@ -82,8 +90,10 @@ function SaturnRings({ texture }: { texture: Texture | null }) {
     target.set(state.x, state.y, state.z)
     group.current.position.lerp(target, 1 - Math.pow(0.0001, delta))
     group.current.rotation.y = state.rotation
+    group.current.scale.setScalar(state.shrink)
+    if (material.current) material.current.opacity = 0.82 * state.fade
   })
-  return <group ref={group} rotation={[Math.PI / 2.55, 0, 0]}><mesh receiveShadow><ringGeometry args={[0.48, 0.84, 96]} /><meshStandardMaterial map={texture ?? undefined} color="#d7c39a" transparent opacity={0.82} side={DoubleSide} alphaTest={0.2} roughness={0.78} /></mesh></group>
+  return <group ref={group} rotation={[Math.PI / 2.55, 0, 0]}><mesh receiveShadow><ringGeometry args={[0.48, 0.84, 96]} /><meshStandardMaterial ref={material} map={texture ?? undefined} color="#d7c39a" transparent opacity={0.82} side={DoubleSide} alphaTest={0.2} roughness={0.78} /></mesh></group>
 }
 
 function SceneContent({ selectedBodyId, quality }: { selectedBodyId: BodyId | null; quality: keyof typeof QUALITY_TIERS }) {
@@ -91,6 +101,9 @@ function SceneContent({ selectedBodyId, quality }: { selectedBodyId: BodyId | nu
   const { gl } = useThree()
   const selected = selectedBodyId
   const simulation = getSolarFrame()
+  const camera = useThree((state) => state.camera)
+  const controls = useRef<OrbitControlsImpl>(null)
+  const resetToken = useSolarStore((state) => state.cameraResetToken)
   const textureMap = useMemo(() => {
     const map = new Map<string, Texture>()
     textures.forEach((texture, index) => {
@@ -108,12 +121,21 @@ function SceneContent({ selectedBodyId, quality }: { selectedBodyId: BodyId | nu
     installDiagnosticsGetter()
   }, [])
 
+  useEffect(() => {
+    camera.position.set(0, 4.2, 9.6)
+    if (controls.current) {
+      controls.current.target.set(0, 0, 0)
+      controls.current.update()
+    }
+  }, [camera, resetToken])
+
   useFrame((_, delta) => {
     simulation.advance(delta)
     if (!diagnosticsGate.current(_.clock.elapsedTime)) return
 
     const snapshot = simulation.getSnapshot()
     const selectedState = selected ? simulation.getBodyState(selected) : null
+    const absorbingState = snapshot.bodies.find((body) => body.absorptionStage !== 'none')
     publishRenderDiagnostics({
       ...getRenderDiagnostics(),
       sceneReady: true,
@@ -122,8 +144,8 @@ function SceneContent({ selectedBodyId, quality }: { selectedBodyId: BodyId | nu
       simulationTime: snapshot.elapsedSeconds,
       frameCount: getRenderDiagnostics().frameCount + 1,
       qualityTier: quality,
-      interactionState: selectedState?.interaction ?? (snapshot.paused ? 'paused' : 'inactive'),
-      absorptionState: selectedState?.absorptionStage ?? 'none',
+      interactionState: selectedState?.interaction ?? (snapshot.paused ? 'paused' : snapshot.blackHoleLevel > 0 ? 'black-hole' : snapshot.hoverAttractor ? 'hover-attractor' : 'inactive'),
+      absorptionState: selectedState?.absorptionStage ?? absorbingState?.absorptionStage ?? 'none',
       bodyPositions: snapshot.bodies.map((body) => ({ id: body.id, x: body.x, y: body.y, z: body.z }))
     })
   })
@@ -136,12 +158,14 @@ function SceneContent({ selectedBodyId, quality }: { selectedBodyId: BodyId | nu
     <ambientLight intensity={0.16 * QUALITY_TIERS[quality]} color="#90a9d7" />
     <pointLight position={[0, 0, 0]} intensity={5.4} distance={18} decay={1.3} color="#ffcc8a" castShadow shadow-mapSize={[1024, 1024]} />
     <Stars radius={30} depth={18} count={quality === 'eco' ? 900 : quality === 'balanced' ? 1500 : 2200} factor={1.8} saturation={0.2} fade speed={0.18} />
+    <PointerGravity />
+    <BlackHole quality={quality} />
     <Sun texture={textureMap.get('sun') ?? null} />
     {BODY_CATALOG.slice(1).map((body, index) => {
       const orbitRadius = 0.95 + Math.log1p(body.distanceAu) * 1.33
       return <group key={body.id}><OrbitPath radius={orbitRadius} opacity={0.08 + index * 0.008} /><Planet body={body} texture={textureMap.get(body.id) ?? null} selected={selected === body.id} onSelect={select} />{body.id === 'saturn' && <SaturnRings texture={textureMap.get('saturn-rings') ?? null} />}</group>
     })}
-    <OrbitControls makeDefault enablePan={false} minDistance={3.2} maxDistance={16} dampingFactor={0.08} enableDamping rotateSpeed={0.42} zoomSpeed={0.62} />
+    <OrbitControls ref={controls} makeDefault enablePan={false} minDistance={3.2} maxDistance={16} dampingFactor={0.08} enableDamping rotateSpeed={0.42} zoomSpeed={0.62} />
   </>
 }
 
