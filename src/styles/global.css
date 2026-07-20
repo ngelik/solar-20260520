@@ -45,7 +45,16 @@ h1 em { color: var(--gold); font-style: normal; }
 .stat-value { color: var(--gold); font-family: 'DM Mono', monospace; font-size: 38px; letter-spacing: -.1em; }
 .stat-label { color: var(--quiet); font-family: 'DM Mono', monospace; font-size: 9px; line-height: 1.5; text-transform: uppercase; }
 
-.scene-panel { position: relative; min-height: 635px; overflow: hidden; border-right: 1px solid var(--line); background: radial-gradient(circle at 52% 47%, rgba(48, 80, 137, .17), transparent 34%); }
+.scene-panel { position: relative; min-height: 635px; overflow: hidden; border-right: 1px solid var(--line); background: radial-gradient(circle at 52% 47%, rgba(48, 80, 137, .17), transparent 34%); isolation: isolate; }
+.solar-canvas { position: absolute !important; inset: 0; z-index: 0; min-height: 100%; }
+.scene-panel::after { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: radial-gradient(circle at center, transparent 40%, rgba(4, 7, 17, .32) 100%); content: ''; }
+.canvas-loading, .webgl-fallback { display: grid; place-items: center; gap: 12px; min-width: 190px; padding: 18px 22px; border: 1px solid rgba(203, 215, 239, .16); background: rgba(7, 11, 24, .84); color: var(--muted); font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: .08em; text-align: center; text-transform: uppercase; }
+.webgl-fallback { position: absolute; inset: 18px; z-index: 4; align-content: center; }
+.webgl-fallback strong { color: var(--gold); font-size: 12px; }
+.webgl-fallback span { max-width: 250px; line-height: 1.7; }
+.loading-orbit { width: 28px; height: 28px; border: 1px solid rgba(244, 186, 103, .32); border-top-color: var(--gold); border-radius: 50%; animation: orbit-spinner 1.2s linear infinite; }
+@keyframes orbit-spinner { to { transform: rotate(360deg); } }
+.scene-panel > :not(.solar-canvas) { z-index: 2; }
 .scene-grid { position: absolute; inset: 0; opacity: .16; background-image: linear-gradient(rgba(150, 190, 220, .12) 1px, transparent 1px), linear-gradient(90deg, rgba(150, 190, 220, .12) 1px, transparent 1px); background-size: 74px 74px; mask-image: radial-gradient(circle, #000 5%, transparent 70%); }
 .orbit-orbit { position: absolute; top: 49%; left: 49%; border: 1px solid rgba(198, 219, 238, .19); border-radius: 50%; transform: translate(-50%, -50%) rotate(-14deg); }
 .orbit-one { width: 31%; aspect-ratio: 1; }

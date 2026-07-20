@@ -1,12 +1,15 @@
 import { useEffect } from 'react'
 import { BODY_CATALOG } from './domain/bodies'
 import { useSolarStore } from './state/solarStore'
+import { SolarCanvas } from './rendering/SolarScene'
+import { installDiagnosticsGetter } from './rendering/debugBridge'
 
 function App() {
   const paused = useSolarStore((state) => state.paused)
   const speed = useSolarStore((state) => state.speed)
   const selectedBodyId = useSolarStore((state) => state.selectedBodyId)
   const activeOverlay = useSolarStore((state) => state.activeOverlay)
+  const quality = useSolarStore((state) => state.quality)
   const interaction = useSolarStore((state) => state.interaction)
   const setPaused = useSolarStore((state) => state.setPaused)
   const setSpeed = useSolarStore((state) => state.setSpeed)
@@ -15,11 +18,14 @@ function App() {
   const setOverlay = useSolarStore((state) => state.setOverlay)
 
   useEffect(() => {
-    Object.defineProperty(window, '__orbitariumDiagnostics', {
-      configurable: true,
-      value: { sceneReady: true, lastError: null, frameCount: 0 }
-    })
-  }, [])
+    installDiagnosticsGetter()
+    const selectFromScene = (event: Event) => {
+      const bodyId = (event as CustomEvent<string>).detail
+      selectBody(bodyId as typeof BODY_CATALOG[number]['id'])
+    }
+    window.addEventListener('orbitarium:select-body', selectFromScene)
+    return () => window.removeEventListener('orbitarium:select-body', selectFromScene)
+  }, [selectBody])
 
   return (
     <div className="app-shell">
@@ -47,16 +53,7 @@ function App() {
         </section>
 
         <section className="scene-panel" aria-label="Interactive solar system scene">
-          <div className="scene-grid" aria-hidden="true" />
-          <div className="orbit-orbit orbit-one" aria-hidden="true" />
-          <div className="orbit-orbit orbit-two" aria-hidden="true" />
-          <div className="orbit-orbit orbit-three" aria-hidden="true" />
-          <div className="scene-sun" aria-hidden="true"><span /></div>
-          <div className="scene-planet planet-mercury" aria-hidden="true" />
-          <div className="scene-planet planet-earth" aria-hidden="true" />
-          <div className="scene-planet planet-jupiter" aria-hidden="true" />
-          <div className="scene-label label-sun">Sun <span>01</span></div>
-          <div className="scene-label label-earth">Earth <span>03</span></div>
+          <SolarCanvas selectedBodyId={selectedBodyId} quality={quality} />
           <div className="scene-note">Drag through the field<br /><span>gravity is softened for play</span></div>
           <div className="scene-caption"><span className="live-pulse" /> live orbital baseline</div>
           <div className="scene-controls" role="group" aria-label="Scene controls">
