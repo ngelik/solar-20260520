@@ -1,39 +1,35 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+
 interface Buffer {
   readonly length: number
-  readonly [index: number]: number
+  [index: number]: number
   readUInt32LE(offset: number): number
   subarray(start: number, end?: number): Buffer
   toString(encoding?: string): string
+  write(value: string, offset: number, encoding?: string): number
+  writeUInt32LE(value: number, offset: number): number
+  copy(target: Buffer, targetStart?: number): number
 }
 
 declare const Buffer: {
   concat(chunks: readonly Buffer[]): Buffer
-}
-
-interface ChildProcessStream {
-  on(event: 'data', listener: (chunk: Buffer) => void): void
-}
-
-interface ChildProcessLike {
-  readonly stdout: ChildProcessStream
-  readonly stderr: ChildProcessStream
-  on(event: 'error', listener: (error: unknown) => void): void
-  on(event: 'close', listener: (code: number | null) => void): void
+  from(bytes: readonly number[] | Uint8Array): Buffer
+  alloc(length: number): Buffer
 }
 
 import { describe, expect, it } from 'vitest'
 // Node typings are intentionally not a project dependency. Keep these imports
 // runtime-only while the file-scoped contracts above type the exercised APIs.
-// @ts-ignore -- the test runs under Node/Vitest, whose runtime modules are present.
+// @ts-ignore -- Node typings are intentionally not a project dependency.
 import { readFile, stat } from 'node:fs/promises'
-// @ts-ignore -- see the note above.
+// @ts-ignore -- Node typings are intentionally not a project dependency.
 import { dirname, resolve } from 'node:path'
-// @ts-ignore -- see the note above.
+// @ts-ignore -- Node typings are intentionally not a project dependency.
 import { fileURLToPath } from 'node:url'
 import { BODY_CATALOG } from '../domain/bodies'
-// @ts-ignore -- see the note above.
+// @ts-ignore -- Node typings are intentionally not a project dependency.
 import { spawn } from 'node:child_process'
-import { calculateAxialRotationRadians, createDiagnosticsPublicationGate } from './SolarScene'
+import { calculateAxialRotationRadians, createDiagnosticsPublicationGate, normalizeWebpPayload } from './SolarScene'
 import { MAX_ANISOTROPY, MAX_DPR, QUALITY_TIERS, TEXTURE_CATALOG } from './textureCatalog'
 
 const textureRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/textures')
@@ -144,6 +140,60 @@ describe('rendering asset catalog', () => {
     expect(nonzeroAlphaPixels).toBeGreaterThan(pixelCount * 0.05)
     expect(alphaValues.size).toBeGreaterThan(4)
     expect(maximumAlpha - minimumAlpha).toBeGreaterThan(32)
+  })
+
+  it('normalizes the unchanged catalog payload without sharing or extending its bytes', async () => {
+    const asset = await readFile(resolve(textureRoot, 'sun.webp'))
+    const normalized = normalizeWebpPayload('/textures/sun.webp', asset as unknown as Uint8Array)
+
+    expect(normalized).not.toBe(asset)
+    expect(normalized.byteLength).toBe(asset.byteLength)
+    expect(new DataView(normalized.buffer, normalized.byteOffset, normalized.byteLength).getUint32(4, true)).toBe(asset.byteLength - 8)
+    expect(normalized[normalized.length - 1]).toBe(asset[asset.length - 1])
+
+    const decoderBlob = new Blob([normalized as unknown as BlobPart], { type: 'image/webp' })
+    expect(decoderBlob.size).toBe(normalized.byteLength)
+  })
+
+  it('accepts a non-zero padding byte on an odd-sized chunk', () => {
+    const payload = Buffer.from([1, 2, 3])
+    const bytes = Buffer.alloc(12 + 8 + payload.length + 1)
+    bytes.write('RIFF', 0, 'ascii')
+    bytes.writeUInt32LE(bytes.length - 8, 4)
+    bytes.write('WEBP', 8, 'ascii')
+    bytes.write('TEST', 12, 'ascii')
+    bytes.writeUInt32LE(payload.length, 16)
+    payload.copy(bytes, 20)
+    bytes[23] = 0x7f
+
+    const normalized = normalizeWebpPayload('/textures/synthetic.webp', bytes as unknown as Uint8Array)
+    expect(normalized[23]).toBe(0x7f)
+    expect(normalized).toEqual(new Uint8Array(bytes))
+  })
+
+  it('rejects a truncated chunk payload', () => {
+    const bytes = Buffer.alloc(12 + 8 + 3)
+    bytes.write('RIFF', 0, 'ascii')
+    bytes.writeUInt32LE(bytes.length - 8, 4)
+    bytes.write('WEBP', 8, 'ascii')
+    bytes.write('TEST', 12, 'ascii')
+    bytes.writeUInt32LE(5, 16)
+
+    expect(() => normalizeWebpPayload('/textures/truncated.webp', bytes as unknown as Uint8Array)).toThrow(/chunk payload/)
+  })
+
+  it('rejects a syntactically valid appended chunk and never exposes it to decoding', async () => {
+    const asset = await readFile(resolve(textureRoot, 'sun.webp'))
+    const appended = Buffer.alloc(asset.length + 12)
+    asset.copy(appended)
+    appended.write('JUNK', asset.length, 'ascii')
+    appended.writeUInt32LE(0, asset.length + 4)
+    appended.writeUInt32LE(appended.length - 8, 4)
+
+    expect(() => normalizeWebpPayload('/textures/sun.webp', appended as unknown as Uint8Array)).toThrow(/catalog response length/)
+    const valid = normalizeWebpPayload('/textures/sun.webp', asset as unknown as Uint8Array)
+    const decoderBlob = new Blob([valid as unknown as BlobPart], { type: 'image/webp' })
+    expect(decoderBlob.size).toBe(asset.length)
   })
 
   it('keeps renderer quality within bounded browser-safe limits', () => {
