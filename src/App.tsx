@@ -24,6 +24,7 @@ function App() {
   const resetCamera = useSolarStore((state) => state.resetCamera)
   const setOverlay = useSolarStore((state) => state.setOverlay)
   const setQuality = useSolarStore((state) => state.setQuality)
+  const triggerBlackHole = useSolarStore((state) => state.triggerBlackHole)
   const reducedMotion = useReducedMotion()
   const [showMeasurements, setShowMeasurements] = useState(false)
   const [showLabels, setShowLabels] = useState(true)
@@ -47,7 +48,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell ${reducedMotion ? 'is-reduced-motion' : ''}`} data-reduced-motion={reducedMotion}>
+    <div className={`app-shell ${reducedMotion ? 'is-reduced-motion' : ''}`} data-reduced-motion={reducedMotion} data-testid="solar-system-shell">
       <a className="skip-link" href="#solar-system-main">Skip to solar system</a>
       <SceneOverlay interaction={interaction} showLabels={showLabels} showMeasurements={showMeasurements} />
 
@@ -70,6 +71,9 @@ function App() {
 
         <section className="scene-panel" aria-label="Interactive solar system scene" data-camera-reset={cameraResetToken}>
           <SolarCanvas selectedBodyId={selectedBodyId} quality={quality} />
+          <button type="button" className="scene-black-hole-toggle" data-testid="black-hole-toggle" onClick={triggerBlackHole} aria-pressed={interaction === 'black-hole' || interaction === 'absorption'}>
+            <span aria-hidden="true">◉</span> {interaction === 'black-hole' || interaction === 'absorption' ? 'Black hole live' : 'Create black hole'}
+          </button>
           <SceneOverlay mode="scene" interaction={interaction} selectedName={selectedBody?.name} showLabels={showLabels} showMeasurements={showMeasurements} quality={quality} reducedMotion={reducedMotion} />
           <ControlDock paused={paused} speed={speed} quality={quality} showFacts={showFacts} showMeasurements={showMeasurements} onPausedChange={setPaused} onSpeedChange={setSpeed} onQualityChange={setQuality} onFactsChange={(visible) => setOverlay(visible ? 'facts' : 'none')} onMeasurementsChange={setShowMeasurements} onCameraReset={resetCamera} onFullReset={fullReset} />
         </section>

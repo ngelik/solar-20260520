@@ -2,7 +2,7 @@ import { Component, Suspense, useEffect, useMemo, useRef, type PropsWithChildren
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls, Stars, Html } from '@react-three/drei'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
-import { DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Texture, Vector3, type WebGLRenderer } from 'three'
+import { DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Texture, Vector3, type Camera, type WebGLRenderer } from 'three'
 import { BODY_CATALOG, type BodyDefinition, type BodyId } from '../domain/bodies'
 import { getSolarFrame, useSolarStore } from '../state/solarStore'
 import { getRenderDiagnostics, installDiagnosticsGetter, publishRenderDiagnostics } from './debugBridge'
@@ -14,6 +14,12 @@ export const DIAGNOSTICS_INTERVAL_SECONDS = 0.25
 const FULL_TURN_RADIANS = Math.PI * 2
 const MINIMUM_READY_SECONDS = 0.75
 const MINIMUM_READY_FRAMES = 4
+const PLANET_READABILITY_SCALE = 3.7
+const MINIMUM_PLANET_SCREEN_RADIUS = 0.52
+
+function getPlanetPresentationRadius(body: BodyDefinition): number {
+  return Math.max(body.presentationRadius * body.presentationScale * PLANET_READABILITY_SCALE, MINIMUM_PLANET_SCREEN_RADIUS)
+}
 
 export function calculateAxialRotationRadians(deltaSeconds: number, axialRotationHours: number): number {
   return (deltaSeconds * FULL_TURN_RADIANS * 24) / axialRotationHours
@@ -230,11 +236,21 @@ function Sun({ texture }: { texture: Texture | null }) {
   return <mesh ref={sun} castShadow receiveShadow><sphereGeometry args={[0.7, 48, 32]} /><meshBasicMaterial ref={material} map={texture ?? undefined} color="#ffd18a" toneMapped={false} transparent /></mesh>
 }
 
-function Planet({ body, texture, selected, onSelect }: { body: BodyDefinition; texture: Texture | null; selected: boolean; onSelect: (id: BodyId) => void }) {
+function Planet({ body, texture, selected, onSelect, renderedPositions }: { body: BodyDefinition; texture: Texture | null; selected: boolean; onSelect: (id: BodyId) => void; renderedPositions: Map<BodyId, Vector3> }) {
   const mesh = useRef<Mesh>(null)
   const simulation = getSolarFrame()
   const state = simulation.getBodyState(body.id)
-  const radius = body.presentationRadius * body.presentationScale
+  const radius = getPlanetPresentationRadius(body)
+  const emissive = {
+    mercury: '#b9a590',
+    venus: '#d58a69',
+    earth: '#3d96a0',
+    mars: '#c0523d',
+    jupiter: '#aa795e',
+    saturn: '#bd9e62',
+    uranus: '#6bd2d9',
+    neptune: '#5f7fda'
+  }[body.id]
   const target = useMemo(() => new Vector3(), [])
   const source = useMemo(() => new Vector3(), [])
   useFrame((_, delta) => {
@@ -242,6 +258,8 @@ function Planet({ body, texture, selected, onSelect }: { body: BodyDefinition; t
     if (!mesh.current) return
     target.set(current.x, current.y, current.z)
     mesh.current.position.lerp(target, 1 - Math.pow(0.0001, delta))
+    const renderedPosition = renderedPositions.get(body.id)
+    if (renderedPosition) renderedPosition.copy(mesh.current.position)
     source.copy(pointerGravityPosition)
     const fadeScale = current.shrink * (0.98 + current.tidalElongation * 0.02)
     const stretch = 1 + Math.max(0, current.tidalElongation - 1) * 0.38
@@ -253,11 +271,11 @@ function Planet({ body, texture, selected, onSelect }: { body: BodyDefinition; t
   })
   return <mesh ref={mesh} position={[state.x, state.y, state.z]} castShadow receiveShadow onPointerDown={(event) => { event.stopPropagation(); const pointerEvent = event.nativeEvent; if (pointerEvent.button === 0 && pointerEvent.isPrimary !== false) markPlanetPointerGesture(pointerEvent.pointerId); onSelect(body.id) }} onPointerOver={() => { document.body.style.cursor = 'crosshair' }} onPointerOut={() => { document.body.style.cursor = '' }}>
     <sphereGeometry args={[radius, body.id === 'jupiter' || body.id === 'saturn' ? 48 : 32, 24]} />
-    <meshStandardMaterial map={texture ?? undefined} color={selected ? '#fff0be' : '#ffffff'} roughness={body.id === 'earth' ? 0.48 : body.id === 'jupiter' || body.id === 'saturn' ? 0.78 : 0.9} metalness={0.02} transparent />
+    <meshStandardMaterial map={texture ?? undefined} color={selected ? '#fff0be' : '#ffffff'} emissive={emissive} emissiveIntensity={selected ? 0.88 : 0.68} roughness={body.id === 'earth' ? 0.48 : body.id === 'jupiter' || body.id === 'saturn' ? 0.78 : 0.9} metalness={0.02} transparent />
   </mesh>
 }
 
-function SaturnRings({ texture }: { texture: Texture | null }) {
+function SaturnRings({ texture, renderedPositions }: { texture: Texture | null; renderedPositions: Map<BodyId, Vector3> }) {
   const group = useRef<Group>(null)
   const material = useRef<MeshStandardMaterial>(null)
   const target = useMemo(() => new Vector3(), [])
@@ -267,11 +285,83 @@ function SaturnRings({ texture }: { texture: Texture | null }) {
     if (!group.current) return
     target.set(state.x, state.y, state.z)
     group.current.position.lerp(target, 1 - Math.pow(0.0001, delta))
+    const renderedPosition = renderedPositions.get('saturn')
+    if (renderedPosition) renderedPosition.copy(group.current.position)
     group.current.rotation.y = state.rotation
     group.current.scale.setScalar(state.shrink)
     if (material.current) material.current.opacity = 0.82 * state.fade
   })
-  return <group ref={group} rotation={[Math.PI / 2.55, 0, 0]}><mesh receiveShadow><ringGeometry args={[0.48, 0.84, 96]} /><meshStandardMaterial ref={material} map={texture ?? undefined} color="#d7c39a" transparent opacity={0.82} side={DoubleSide} alphaTest={0.2} roughness={0.78} /></mesh></group>
+  return <group ref={group} rotation={[Math.PI / 2.55, 0, 0]}><mesh receiveShadow><ringGeometry args={[0.52, 1.32, 128]} /><meshStandardMaterial ref={material} map={texture ?? undefined} color="#ead5a4" emissive="#b08a3d" emissiveIntensity={0.82} transparent opacity={0.98} side={DoubleSide} alphaTest={0.12} roughness={0.78} /></mesh></group>
+}
+
+function updateScreenSpaceBounds(
+  camera: Camera,
+  width: number,
+  height: number,
+  bodyPositions: ReturnType<typeof getSolarFrame>['bodies'],
+  renderedPositions: Map<BodyId, Vector3>,
+  target: Record<string, { left: number; top: number; right: number; bottom: number; centerX: number; centerY: number; visible: boolean }>
+) {
+  const center = new Vector3()
+  const edge = new Vector3()
+  const ringPoint = new Vector3()
+  const saturn = bodyPositions.find((body) => body.id === 'saturn')
+  for (let index = 0; index < bodyPositions.length; index += 1) {
+    const state = bodyPositions[index]
+    const definition = BODY_CATALOG[index]
+    const radius = getPlanetPresentationRadius(definition) * state.shrink
+    const stretch = 1 + Math.max(0, state.tidalElongation - 1) * 0.38
+    const renderedPosition = renderedPositions.get(state.id)
+    center.set(renderedPosition?.x ?? state.x, renderedPosition?.y ?? state.y, renderedPosition?.z ?? state.z).project(camera)
+    const screenX = (center.x * 0.5 + 0.5) * width
+    const screenY = (-center.y * 0.5 + 0.5) * height
+    const bounds = { left: screenX, top: screenY, right: screenX, bottom: screenY }
+    const rotation = state.absorptionStage === 'none' ? 0 : state.rotation * 0.1
+    for (const [x, y, z] of [[radius, 0, 0], [-radius, 0, 0], [0, radius, 0], [0, -radius, 0], [0, 0, radius * stretch], [0, 0, -radius * stretch]] as const) {
+      const rotatedX = x * Math.cos(rotation) - z * Math.sin(rotation)
+      const rotatedZ = x * Math.sin(rotation) + z * Math.cos(rotation)
+      edge.set((renderedPosition?.x ?? state.x) + rotatedX, (renderedPosition?.y ?? state.y) + y, (renderedPosition?.z ?? state.z) + rotatedZ).project(camera)
+      const edgeX = (edge.x * 0.5 + 0.5) * width
+      const edgeY = (-edge.y * 0.5 + 0.5) * height
+      bounds.left = Math.min(bounds.left, edgeX)
+      bounds.top = Math.min(bounds.top, edgeY)
+      bounds.right = Math.max(bounds.right, edgeX)
+      bounds.bottom = Math.max(bounds.bottom, edgeY)
+    }
+    target[state.id] = {
+      ...bounds,
+      centerX: screenX,
+      centerY: screenY,
+      visible: center.z >= -1 && center.z <= 1 && bounds.right >= 0 && bounds.left <= width && bounds.bottom >= 0 && bounds.top <= height
+    }
+  }
+  if (!saturn) return
+  const ringBounds = { left: Number.POSITIVE_INFINITY, top: Number.POSITIVE_INFINITY, right: Number.NEGATIVE_INFINITY, bottom: Number.NEGATIVE_INFINITY }
+  const ringTilt = Math.PI / 2.55
+  const ringRotation = saturn.rotation
+  const ringRadius = 1.32 * saturn.shrink
+  for (let index = 0; index < 32; index += 1) {
+    const angle = (index / 32) * Math.PI * 2
+    const localX = Math.cos(angle) * ringRadius
+    const localZ = Math.sin(angle) * ringRadius
+    const rotatedX = localX * Math.cos(ringRotation) + localZ * Math.sin(ringRotation)
+    const rotatedZ = -localX * Math.sin(ringRotation) + localZ * Math.cos(ringRotation)
+    const renderedSaturn = renderedPositions.get('saturn')
+    const saturnX = renderedSaturn?.x ?? saturn.x
+    const saturnY = renderedSaturn?.y ?? saturn.y
+    const saturnZ = renderedSaturn?.z ?? saturn.z
+    const worldX = saturnX + rotatedX
+    const worldY = saturnY - rotatedZ * Math.sin(ringTilt)
+    const worldZ = saturnZ + rotatedZ * Math.cos(ringTilt)
+    ringPoint.set(worldX, worldY, worldZ).project(camera)
+    const screenX = (ringPoint.x * 0.5 + 0.5) * width
+    const screenY = (-ringPoint.y * 0.5 + 0.5) * height
+    ringBounds.left = Math.min(ringBounds.left, screenX)
+    ringBounds.top = Math.min(ringBounds.top, screenY)
+    ringBounds.right = Math.max(ringBounds.right, screenX)
+    ringBounds.bottom = Math.max(ringBounds.bottom, screenY)
+  }
+  target['saturn-rings'] = { ...ringBounds, centerX: (ringBounds.left + ringBounds.right) / 2, centerY: (ringBounds.top + ringBounds.bottom) / 2, visible: ringBounds.right >= 0 && ringBounds.left <= width && ringBounds.bottom >= 0 && ringBounds.top <= height }
 }
 
 function SceneContent({ selectedBodyId, quality }: { selectedBodyId: BodyId | null; quality: keyof typeof QUALITY_TIERS }) {
@@ -296,13 +386,15 @@ function SceneContent({ selectedBodyId, quality }: { selectedBodyId: BodyId | nu
   const diagnosticsGate = useRef(createDiagnosticsPublicationGate())
   const animationFrames = useRef(0)
   const renderer = useMemo(() => rendererName(gl), [gl])
+  const screenSpaceBounds = useMemo(() => ({} as Record<string, { left: number; top: number; right: number; bottom: number; centerX: number; centerY: number; visible: boolean }>), [])
+  const renderedPositions = useMemo(() => new Map<BodyId, Vector3>(), [])
 
   useEffect(() => {
     installDiagnosticsGetter()
   }, [])
 
   useEffect(() => {
-    camera.position.set(0, 4.2, 9.6)
+    camera.position.set(0, 3.8, 12.8)
     if (controls.current) {
       controls.current.target.set(0, 0, 0)
       controls.current.update()
@@ -319,9 +411,12 @@ function SceneContent({ selectedBodyId, quality }: { selectedBodyId: BodyId | nu
     const absorbingState = snapshot.bodies.find((body) => body.absorptionStage !== 'none')
     const current = getRenderDiagnostics()
     const texturesReady = textureMap.size === TEXTURE_CATALOG.length
+    updateScreenSpaceBounds(camera, gl.domElement.clientWidth, gl.domElement.clientHeight, snapshot.bodies, renderedPositions, screenSpaceBounds)
+    const sceneReady = texturesReady && snapshot.elapsedSeconds >= MINIMUM_READY_SECONDS && animationFrames.current >= MINIMUM_READY_FRAMES
+    gl.domElement.dataset.sceneReady = String(sceneReady)
     publishRenderDiagnostics({
       ...current,
-      sceneReady: texturesReady && snapshot.elapsedSeconds >= MINIMUM_READY_SECONDS && animationFrames.current >= MINIMUM_READY_FRAMES,
+      sceneReady,
       renderer,
       textureDimensions: positions,
       simulationTime: snapshot.elapsedSeconds,
@@ -329,7 +424,8 @@ function SceneContent({ selectedBodyId, quality }: { selectedBodyId: BodyId | nu
       qualityTier: quality,
       interactionState: selectedState?.interaction ?? (snapshot.paused ? 'paused' : snapshot.blackHoleLevel > 0 ? 'black-hole' : snapshot.hoverAttractor ? 'hover-attractor' : 'inactive'),
       absorptionState: selectedState?.absorptionStage ?? absorbingState?.absorptionStage ?? 'none',
-      bodyPositions: snapshot.bodies.map((body) => ({ id: body.id, x: body.x, y: body.y, z: body.z }))
+      bodyPositions: snapshot.bodies.map((body) => ({ id: body.id, x: body.x, y: body.y, z: body.z })),
+      screenSpaceBounds
     })
   })
 
@@ -346,7 +442,7 @@ function SceneContent({ selectedBodyId, quality }: { selectedBodyId: BodyId | nu
     <Sun texture={textureMap.get('sun') ?? null} />
     {BODY_CATALOG.slice(1).map((body, index) => {
       const orbitRadius = 0.95 + Math.log1p(body.distanceAu) * 1.33
-      return <group key={body.id}><OrbitPath radius={orbitRadius} opacity={0.08 + index * 0.008} /><Planet body={body} texture={textureMap.get(body.id) ?? null} selected={selected === body.id} onSelect={select} />{body.id === 'saturn' && <SaturnRings texture={textureMap.get('saturn-rings') ?? null} />}</group>
+      return <group key={body.id}><OrbitPath radius={orbitRadius} opacity={0.08 + index * 0.008} /><Planet body={body} texture={textureMap.get(body.id) ?? null} selected={selected === body.id} onSelect={select} renderedPositions={renderedPositions} />{body.id === 'saturn' && <SaturnRings texture={textureMap.get('saturn-rings') ?? null} renderedPositions={renderedPositions} />}</group>
     })}
     <OrbitControls ref={controls} makeDefault enablePan={false} minDistance={3.2} maxDistance={16} dampingFactor={0.08} enableDamping rotateSpeed={0.42} zoomSpeed={0.62} />
   </>
@@ -372,7 +468,8 @@ class SceneBoundary extends Component<PropsWithChildren, { error: Error | null }
 
 export function SolarCanvas({ selectedBodyId, quality }: { selectedBodyId: BodyId | null; quality: keyof typeof QUALITY_TIERS }) {
   const handleCreated = ({ gl }: { gl: WebGLRenderer }) => {
-    gl.domElement.dataset.testid = 'webgl-canvas'
+    gl.domElement.dataset.testid = 'solar-system-canvas'
+    gl.domElement.dataset.sceneReady = 'false'
     try {
       publishRenderDiagnostics({ ...getRenderDiagnostics(), sceneReady: false, renderer: rendererName(gl), lastError: null })
     } catch (error) {
@@ -385,7 +482,7 @@ export function SolarCanvas({ selectedBodyId, quality }: { selectedBodyId: BodyI
     }
   }
 
-  return <SceneBoundary><Canvas className="solar-canvas" dpr={[1, MAX_DPR]} camera={{ position: [0, 4.2, 9.6], fov: 46, near: 0.1, far: 60 }} shadows gl={{ antialias: true, powerPreference: 'high-performance' }} onCreated={handleCreated} fallback={<CanvasFailureFallback />}>
+  return <SceneBoundary><Canvas className="solar-canvas" dpr={[1, MAX_DPR]} camera={{ position: [0, 3.8, 12.8], fov: 52, near: 0.1, far: 60 }} shadows gl={{ antialias: true, powerPreference: 'high-performance' }} onCreated={handleCreated} fallback={<CanvasFailureFallback />}>
     <Suspense fallback={<LoadingState />}><SceneContent selectedBodyId={selectedBodyId} quality={quality} /></Suspense>
   </Canvas></SceneBoundary>
 }

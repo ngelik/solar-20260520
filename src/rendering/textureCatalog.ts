@@ -59,6 +59,18 @@ export const BODY_TEXTURE_KEYS = Object.freeze({
   jupiter: 'jupiter', saturn: 'saturn', uranus: 'uranus', neptune: 'neptune'
 } satisfies Record<Exclude<BodyId, never>, string>)
 
+export const TEXTURE_KEYS = Object.freeze(TEXTURE_CATALOG.map((entry) => entry.key))
+
+export function hasCompleteTextureCoverage(): boolean {
+  return TEXTURE_CATALOG.length === 10 && TEXTURE_CATALOG.every((entry) => (
+    entry.path === `/textures/${entry.key}.webp` &&
+    entry.encodedDimensions[0] >= 2048 &&
+    entry.sourceDimensions[0] >= entry.encodedDimensions[0] &&
+    entry.bytes > 0 &&
+    (entry.colorSpace === 'srgb' || entry.colorSpace === 'srgb-alpha')
+  ))
+}
+
 export function configureTexture(texture: Texture, colorSpace: TextureColorSpace, maxAnisotropy = MAX_ANISOTROPY): Texture {
   if (colorSpace === 'srgb' || colorSpace === 'srgb-alpha') texture.colorSpace = SRGBColorSpace
   texture.minFilter = LinearMipmapLinearFilter
@@ -69,7 +81,11 @@ export function configureTexture(texture: Texture, colorSpace: TextureColorSpace
 }
 
 export function preloadTextureCatalog(): void {
-  for (const entry of TEXTURE_CATALOG) TextureLoader.prototype.load.call(new TextureLoader(), entry.path)
+  const loader = new TextureLoader()
+  for (const entry of TEXTURE_CATALOG) {
+    const texture = loader.load(entry.path)
+    configureTexture(texture, entry.colorSpace)
+  }
 }
 
 export function getTextureEntry(key: string): TextureManifestEntry {

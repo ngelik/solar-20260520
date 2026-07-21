@@ -30,7 +30,7 @@ import { BODY_CATALOG } from '../domain/bodies'
 // @ts-ignore -- Node typings are intentionally not a project dependency.
 import { spawn } from 'node:child_process'
 import { calculateAxialRotationRadians, createDiagnosticsPublicationGate, normalizeWebpPayload } from './SolarScene'
-import { MAX_ANISOTROPY, MAX_DPR, QUALITY_TIERS, TEXTURE_CATALOG } from './textureCatalog'
+import { hasCompleteTextureCoverage, MAX_ANISOTROPY, MAX_DPR, QUALITY_TIERS, TEXTURE_CATALOG, TEXTURE_KEYS } from './textureCatalog'
 
 const textureRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../public/textures')
 
@@ -71,6 +71,8 @@ describe('rendering asset catalog', () => {
     ])
     expect(TEXTURE_CATALOG.slice(0, 9).map((entry) => entry.body)).toEqual(BODY_CATALOG.map((body) => body.id))
     expect(TEXTURE_CATALOG.every((entry) => entry.path.startsWith('/textures/'))).toBe(true)
+    expect(TEXTURE_KEYS).toHaveLength(10)
+    expect(hasCompleteTextureCoverage()).toBe(true)
   })
 
   it('records 2K source and encoded width for every map', () => {
