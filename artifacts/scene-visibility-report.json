@@ -1,0 +1,134 @@
+{
+  "generated_at": "2026-07-21T21:05:35.151Z",
+  "status": "skipped",
+  "reports": [
+    {
+      "check_name": "solar-1280-initial",
+      "url": "http://127.0.0.1:4173/",
+      "status": "skipped",
+      "observed_selectors": [],
+      "missing_selectors": [],
+      "console_errors": [],
+      "expected_network": [
+        "http://127.0.0.1:4173/",
+        "http://127.0.0.1:4173/textures/**"
+      ],
+      "observed_network": [],
+      "screenshot_artifact": "artifacts/screenshots/solar-1280-initial.png",
+      "console_error_policy": "no_errors",
+      "viewport": {
+        "width": 1280,
+        "height": 720,
+        "mobile": false
+      },
+      "horizontal_overflow": false,
+      "overlap_failures": [],
+      "final_exact_origin_assertion_passed": false,
+      "pixel_check": {
+        "sampled_pixels": 0,
+        "non_blank_pixels": 0,
+        "unique_colors": 0
+      },
+      "failure_reasons": [
+        "Production preview did not start (exit 1)"
+      ],
+      "skipped_reason": "The production-preview check did not complete."
+    },
+    {
+      "check_name": "solar-1920-initial",
+      "url": "http://127.0.0.1:4173/",
+      "status": "skipped",
+      "observed_selectors": [],
+      "missing_selectors": [],
+      "console_errors": [],
+      "expected_network": [
+        "http://127.0.0.1:4173/",
+        "http://127.0.0.1:4173/textures/**"
+      ],
+      "observed_network": [],
+      "screenshot_artifact": "artifacts/screenshots/solar-1920-initial.png",
+      "console_error_policy": "no_errors",
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "mobile": false
+      },
+      "horizontal_overflow": false,
+      "overlap_failures": [],
+      "final_exact_origin_assertion_passed": false,
+      "pixel_check": {
+        "sampled_pixels": 0,
+        "non_blank_pixels": 0,
+        "unique_colors": 0
+      },
+      "failure_reasons": [
+        "Production preview did not start (exit 1)"
+      ],
+      "skipped_reason": "The production-preview check did not complete."
+    },
+    {
+      "check_name": "solar-1280-black-hole",
+      "url": "http://127.0.0.1:4173/",
+      "status": "skipped",
+      "observed_selectors": [],
+      "missing_selectors": [],
+      "console_errors": [],
+      "expected_network": [
+        "http://127.0.0.1:4173/",
+        "http://127.0.0.1:4173/textures/**"
+      ],
+      "observed_network": [],
+      "screenshot_artifact": "artifacts/screenshots/solar-1280-black-hole.png",
+      "console_error_policy": "no_errors",
+      "viewport": {
+        "width": 1280,
+        "height": 720,
+        "mobile": false
+      },
+      "horizontal_overflow": false,
+      "overlap_failures": [],
+      "final_exact_origin_assertion_passed": false,
+      "pixel_check": {
+        "sampled_pixels": 0,
+        "non_blank_pixels": 0,
+        "unique_colors": 0
+      },
+      "failure_reasons": [
+        "Production preview did not start (exit 1)"
+      ],
+      "skipped_reason": "The production-preview check did not complete."
+    },
+    {
+      "check_name": "solar-1920-black-hole",
+      "url": "http://127.0.0.1:4173/",
+      "status": "skipped",
+      "observed_selectors": [],
+      "missing_selectors": [],
+      "console_errors": [],
+      "expected_network": [
+        "http://127.0.0.1:4173/",
+        "http://127.0.0.1:4173/textures/**"
+      ],
+      "observed_network": [],
+      "screenshot_artifact": "artifacts/screenshots/solar-1920-black-hole.png",
+      "console_error_policy": "no_errors",
+      "viewport": {
+        "width": 1920,
+        "height": 1080,
+        "mobile": false
+      },
+      "horizontal_overflow": false,
+      "overlap_failures": [],
+      "final_exact_origin_assertion_passed": false,
+      "pixel_check": {
+        "sampled_pixels": 0,
+        "non_blank_pixels": 0,
+        "unique_colors": 0
+      },
+      "failure_reasons": [
+        "Production preview did not start (exit 1)"
+      ],
+      "skipped_reason": "The production-preview check did not complete."
+    }
+  ]
+}

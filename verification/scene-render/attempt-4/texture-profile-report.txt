@@ -1,0 +1,19 @@
+Texture profile verification — R8-A1
+
+All ten bundled WebP payloads were inspected as RIFF/WEBP files. Every payload
+contains an ICCP chunk whose profile payload identifies sRGB. The Saturn ring
+payload additionally retains ALPH.
+
+sun.webp            2048x1024  297552 bytes  VP8X,ICCP
+mercury.webp        2048x1024  463056 bytes  VP8X,ICCP
+venus.webp          2048x1024  399640 bytes  VP8X,ICCP
+earth.webp          2048x1024  141744 bytes  VP8X,ICCP
+mars.webp           2048x1024  328302 bytes  VP8X,ICCP
+jupiter.webp        2048x1024  130626 bytes  VP8X,ICCP
+saturn.webp         2048x1024   85602 bytes  VP8X,ICCP
+uranus.webp         2048x1024   65618 bytes  VP8X,ICCP
+neptune.webp        2048x1024  141046 bytes  VP8X,ICCP
+saturn-rings.webp   2048x512  1109996 bytes  VP8X,ICCP,ALPH
+
+The physical byte counts above match public/textures/manifest.json and
+src/rendering/textureCatalog.ts.

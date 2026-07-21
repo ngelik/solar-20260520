@@ -1,0 +1,17 @@
+{
+  "license": "CC BY 4.0",
+  "sourceCollection": "Solar Textures",
+  "sourceUrl": "https://genesis-horizon.solarsystemscope.com/textures/",
+  "textures": [
+    { "key": "sun", "path": "/textures/sun.webp", "body": "sun", "sourceDimensions": [8192, 4096], "encodedDimensions": [2048, 1024], "colorSpace": "srgb", "format": "webp", "bytes": 297552 },
+    { "key": "mercury", "path": "/textures/mercury.webp", "body": "mercury", "sourceDimensions": [8192, 4096], "encodedDimensions": [2048, 1024], "colorSpace": "srgb", "format": "webp", "bytes": 463056 },
+    { "key": "venus", "path": "/textures/venus.webp", "body": "venus", "sourceDimensions": [8192, 4096], "encodedDimensions": [2048, 1024], "colorSpace": "srgb", "format": "webp", "bytes": 399640 },
+    { "key": "earth", "path": "/textures/earth.webp", "body": "earth", "sourceDimensions": [8192, 4096], "encodedDimensions": [2048, 1024], "colorSpace": "srgb", "format": "webp", "bytes": 141744 },
+    { "key": "mars", "path": "/textures/mars.webp", "body": "mars", "sourceDimensions": [8192, 4096], "encodedDimensions": [2048, 1024], "colorSpace": "srgb", "format": "webp", "bytes": 328302 },
+    { "key": "jupiter", "path": "/textures/jupiter.webp", "body": "jupiter", "sourceDimensions": [8192, 4096], "encodedDimensions": [2048, 1024], "colorSpace": "srgb", "format": "webp", "bytes": 130626 },
+    { "key": "saturn", "path": "/textures/saturn.webp", "body": "saturn", "sourceDimensions": [8192, 4096], "encodedDimensions": [2048, 1024], "colorSpace": "srgb", "format": "webp", "bytes": 85602 },
+    { "key": "uranus", "path": "/textures/uranus.webp", "body": "uranus", "sourceDimensions": [2048, 1024], "encodedDimensions": [2048, 1024], "colorSpace": "srgb", "format": "webp", "bytes": 65618 },
+    { "key": "neptune", "path": "/textures/neptune.webp", "body": "neptune", "sourceDimensions": [2048, 1024], "encodedDimensions": [2048, 1024], "colorSpace": "srgb", "format": "webp", "bytes": 141046 },
+    { "key": "saturn-rings", "path": "/textures/saturn-rings.webp", "body": "saturn", "sourceDimensions": [8192, 2048], "encodedDimensions": [2048, 512], "colorSpace": "srgb-alpha", "format": "webp", "bytes": 1109996 }
+  ]
+}
