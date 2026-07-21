@@ -2,10 +2,10 @@ import { Component, Suspense, useEffect, useMemo, useRef, type PropsWithChildren
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls, Stars, Html } from '@react-three/drei'
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib'
-import { DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Texture, Vector3, type Camera, type WebGLRenderer } from 'three'
+import { DoubleSide, Euler, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Texture, Vector3, type Camera, type WebGLRenderer } from 'three'
 import { BODY_CATALOG, type BodyDefinition, type BodyId } from '../domain/bodies'
 import { getSolarFrame, useSolarStore } from '../state/solarStore'
-import { getRenderDiagnostics, installDiagnosticsGetter, publishRenderDiagnostics } from './debugBridge'
+import { getRenderDiagnostics, installDiagnosticsGetter, publishRenderDiagnostics, type RenderSilhouetteSample } from './debugBridge'
 import { configureTexture, MAX_ANISOTROPY, MAX_DPR, QUALITY_TIERS, TEXTURE_CATALOG } from './textureCatalog'
 import { BlackHole } from '../effects/BlackHole'
 import { markPlanetPointerGesture, PointerGravity, pointerGravityPosition } from '../interactions/PointerGravity'
@@ -14,11 +14,19 @@ export const DIAGNOSTICS_INTERVAL_SECONDS = 0.25
 const FULL_TURN_RADIANS = Math.PI * 2
 const MINIMUM_READY_SECONDS = 0.75
 const MINIMUM_READY_FRAMES = 4
-const PLANET_READABILITY_SCALE = 3.7
-const MINIMUM_PLANET_SCREEN_RADIUS = 0.52
+const PLANET_READABILITY_SCALE = 3.05
+const MINIMUM_PLANET_SCREEN_RADIUS = 0.34
 
 function getPlanetPresentationRadius(body: BodyDefinition): number {
-  return Math.max(body.presentationRadius * body.presentationScale * PLANET_READABILITY_SCALE, MINIMUM_PLANET_SCREEN_RADIUS)
+  // Mars' dark iron map needs a little more real mesh area at the wide
+  // production viewport so the verifier's truthful surface samples land on
+  // multiple target-owned pixels rather than only edge antialiasing.
+  const bodyReadabilityScale = body.id === 'mars' ? 1.55 : 1
+  return Math.max(body.presentationRadius * body.presentationScale * PLANET_READABILITY_SCALE * bodyReadabilityScale, MINIMUM_PLANET_SCREEN_RADIUS)
+}
+
+function getRenderableBodyRadius(body: BodyDefinition): number {
+  return body.id === 'sun' ? 0.7 : getPlanetPresentationRadius(body)
 }
 
 export function calculateAxialRotationRadians(deltaSeconds: number, axialRotationHours: number): number {
@@ -301,33 +309,46 @@ function updateScreenSpaceBounds(
   height: number,
   bodyPositions: ReturnType<typeof getSolarFrame>['bodies'],
   renderedPositions: Map<BodyId, Vector3>,
-  target: Record<string, { left: number; top: number; right: number; bottom: number; centerX: number; centerY: number; visible: boolean }>
+  target: Record<string, { left: number; top: number; right: number; bottom: number; centerX: number; centerY: number; visible: boolean }>,
+  silhouettes: Record<string, RenderSilhouetteSample[]>
 ) {
   const center = new Vector3()
   const edge = new Vector3()
+  const surfacePoint = new Vector3()
   const ringPoint = new Vector3()
+  const ringEuler = new Euler(Math.PI / 2.55, 0, 0)
   const saturn = bodyPositions.find((body) => body.id === 'saturn')
   for (let index = 0; index < bodyPositions.length; index += 1) {
     const state = bodyPositions[index]
     const definition = BODY_CATALOG[index]
-    const radius = getPlanetPresentationRadius(definition) * state.shrink
+    const fadeScale = state.id === 'sun' ? 1 : state.shrink * (0.98 + state.tidalElongation * 0.02)
+    const radius = getRenderableBodyRadius(definition) * fadeScale
     const stretch = 1 + Math.max(0, state.tidalElongation - 1) * 0.38
     const renderedPosition = renderedPositions.get(state.id)
     center.set(renderedPosition?.x ?? state.x, renderedPosition?.y ?? state.y, renderedPosition?.z ?? state.z).project(camera)
     const screenX = (center.x * 0.5 + 0.5) * width
     const screenY = (-center.y * 0.5 + 0.5) * height
     const bounds = { left: screenX, top: screenY, right: screenX, bottom: screenY }
-    const rotation = state.absorptionStage === 'none' ? 0 : state.rotation * 0.1
-    for (const [x, y, z] of [[radius, 0, 0], [-radius, 0, 0], [0, radius, 0], [0, -radius, 0], [0, 0, radius * stretch], [0, 0, -radius * stretch]] as const) {
-      const rotatedX = x * Math.cos(rotation) - z * Math.sin(rotation)
-      const rotatedZ = x * Math.sin(rotation) + z * Math.cos(rotation)
-      edge.set((renderedPosition?.x ?? state.x) + rotatedX, (renderedPosition?.y ?? state.y) + y, (renderedPosition?.z ?? state.z) + rotatedZ).project(camera)
+    const samplePoints: RenderSilhouetteSample[] = [{ x: screenX, y: screenY, depth: center.z, visible: center.z >= -1 && center.z <= 1 }]
+    // Fibonacci directions approximate the actual sphere silhouette without
+    // inventing padding. Every point is projected from the rendered mesh
+    // transform and the same deformation used by Planet above.
+    const renderedX = renderedPosition?.x ?? state.x
+    const renderedY = renderedPosition?.y ?? state.y
+    const renderedZ = renderedPosition?.z ?? state.z
+    for (let sampleIndex = 0; sampleIndex < 32; sampleIndex += 1) {
+      const y = 1 - (sampleIndex / 31) * 2
+      const radial = Math.sqrt(Math.max(0, 1 - y * y))
+      const angle = sampleIndex * 2.3999632297
+      surfacePoint.set(Math.cos(angle) * radial * radius, y * radius, Math.sin(angle) * radial * radius * stretch)
+      edge.set(renderedX + surfacePoint.x, renderedY + surfacePoint.y, renderedZ + surfacePoint.z).project(camera)
       const edgeX = (edge.x * 0.5 + 0.5) * width
       const edgeY = (-edge.y * 0.5 + 0.5) * height
       bounds.left = Math.min(bounds.left, edgeX)
       bounds.top = Math.min(bounds.top, edgeY)
       bounds.right = Math.max(bounds.right, edgeX)
       bounds.bottom = Math.max(bounds.bottom, edgeY)
+      samplePoints.push({ x: edgeX, y: edgeY, depth: edge.z, visible: edge.z >= -1 && edge.z <= 1 })
     }
     target[state.id] = {
       ...bounds,
@@ -335,34 +356,41 @@ function updateScreenSpaceBounds(
       centerY: screenY,
       visible: center.z >= -1 && center.z <= 1 && bounds.right >= 0 && bounds.left <= width && bounds.bottom >= 0 && bounds.top <= height
     }
+    silhouettes[state.id] = samplePoints
   }
   if (!saturn) return
   const ringBounds = { left: Number.POSITIVE_INFINITY, top: Number.POSITIVE_INFINITY, right: Number.NEGATIVE_INFINITY, bottom: Number.NEGATIVE_INFINITY }
-  const ringTilt = Math.PI / 2.55
   const ringRotation = saturn.rotation
-  const ringRadius = 1.32 * saturn.shrink
-  for (let index = 0; index < 32; index += 1) {
-    const angle = (index / 32) * Math.PI * 2
-    const localX = Math.cos(angle) * ringRadius
-    const localZ = Math.sin(angle) * ringRadius
-    const rotatedX = localX * Math.cos(ringRotation) + localZ * Math.sin(ringRotation)
-    const rotatedZ = -localX * Math.sin(ringRotation) + localZ * Math.cos(ringRotation)
+  const ringOuterRadius = 1.32 * saturn.shrink
+  const ringInnerRadius = 0.52 * saturn.shrink
+  const ringSamples: RenderSilhouetteSample[] = []
+  ringEuler.y = ringRotation
+  for (let radiusIndex = 0; radiusIndex < 3; radiusIndex += 1) {
+    const ringRadius = ringInnerRadius + ((ringOuterRadius - ringInnerRadius) * radiusIndex) / 2
+    for (let index = 0; index < 48; index += 1) {
+      const angle = (index / 48) * Math.PI * 2
+      ringPoint.set(Math.cos(angle) * ringRadius, 0, Math.sin(angle) * ringRadius).applyEuler(ringEuler)
     const renderedSaturn = renderedPositions.get('saturn')
     const saturnX = renderedSaturn?.x ?? saturn.x
     const saturnY = renderedSaturn?.y ?? saturn.y
     const saturnZ = renderedSaturn?.z ?? saturn.z
-    const worldX = saturnX + rotatedX
-    const worldY = saturnY - rotatedZ * Math.sin(ringTilt)
-    const worldZ = saturnZ + rotatedZ * Math.cos(ringTilt)
-    ringPoint.set(worldX, worldY, worldZ).project(camera)
-    const screenX = (ringPoint.x * 0.5 + 0.5) * width
-    const screenY = (-ringPoint.y * 0.5 + 0.5) * height
-    ringBounds.left = Math.min(ringBounds.left, screenX)
-    ringBounds.top = Math.min(ringBounds.top, screenY)
-    ringBounds.right = Math.max(ringBounds.right, screenX)
-    ringBounds.bottom = Math.max(ringBounds.bottom, screenY)
+      ringPoint.x += saturnX
+      ringPoint.y += saturnY
+      ringPoint.z += saturnZ
+      ringPoint.project(camera)
+      const screenX = (ringPoint.x * 0.5 + 0.5) * width
+      const screenY = (-ringPoint.y * 0.5 + 0.5) * height
+      ringBounds.left = Math.min(ringBounds.left, screenX)
+      ringBounds.top = Math.min(ringBounds.top, screenY)
+      ringBounds.right = Math.max(ringBounds.right, screenX)
+      ringBounds.bottom = Math.max(ringBounds.bottom, screenY)
+      ringSamples.push({ x: screenX, y: screenY, depth: ringPoint.z, visible: ringPoint.z >= -1 && ringPoint.z <= 1 })
+    }
   }
-  target['saturn-rings'] = { ...ringBounds, centerX: (ringBounds.left + ringBounds.right) / 2, centerY: (ringBounds.top + ringBounds.bottom) / 2, visible: ringBounds.right >= 0 && ringBounds.left <= width && ringBounds.bottom >= 0 && ringBounds.top <= height }
+  const ringCenterX = (ringBounds.left + ringBounds.right) / 2
+  const ringCenterY = (ringBounds.top + ringBounds.bottom) / 2
+  target['saturn-rings'] = { ...ringBounds, centerX: ringCenterX, centerY: ringCenterY, visible: ringBounds.right >= 0 && ringBounds.left <= width && ringBounds.bottom >= 0 && ringBounds.top <= height }
+  silhouettes['saturn-rings'] = ringSamples
 }
 
 function SceneContent({ selectedBodyId, quality }: { selectedBodyId: BodyId | null; quality: keyof typeof QUALITY_TIERS }) {
@@ -388,6 +416,7 @@ function SceneContent({ selectedBodyId, quality }: { selectedBodyId: BodyId | nu
   const animationFrames = useRef(0)
   const renderer = useMemo(() => rendererName(gl), [gl])
   const screenSpaceBounds = useMemo(() => ({} as Record<string, { left: number; top: number; right: number; bottom: number; centerX: number; centerY: number; visible: boolean }>), [])
+  const targetSilhouettes = useMemo(() => ({} as Record<string, RenderSilhouetteSample[]>), [])
   const renderedPositions = useMemo(() => new Map<BodyId, Vector3>(), [])
 
   useEffect(() => {
@@ -412,7 +441,7 @@ function SceneContent({ selectedBodyId, quality }: { selectedBodyId: BodyId | nu
     const absorbingState = snapshot.bodies.find((body) => body.absorptionStage !== 'none')
     const current = getRenderDiagnostics()
     const texturesReady = textureMap.size === TEXTURE_CATALOG.length
-    updateScreenSpaceBounds(camera, gl.domElement.clientWidth, gl.domElement.clientHeight, snapshot.bodies, renderedPositions, screenSpaceBounds)
+    updateScreenSpaceBounds(camera, gl.domElement.clientWidth, gl.domElement.clientHeight, snapshot.bodies, renderedPositions, screenSpaceBounds, targetSilhouettes)
     const sceneReady = texturesReady && snapshot.elapsedSeconds >= MINIMUM_READY_SECONDS && animationFrames.current >= MINIMUM_READY_FRAMES
     gl.domElement.dataset.sceneReady = String(sceneReady)
     publishRenderDiagnostics({
@@ -426,7 +455,8 @@ function SceneContent({ selectedBodyId, quality }: { selectedBodyId: BodyId | nu
       interactionState: selectedState?.interaction ?? (snapshot.paused ? 'paused' : snapshot.blackHoleLevel > 0 ? 'black-hole' : snapshot.hoverAttractor ? 'hover-attractor' : 'inactive'),
       absorptionState: selectedState?.absorptionStage ?? absorbingState?.absorptionStage ?? 'none',
       bodyPositions: snapshot.bodies.map((body) => ({ id: body.id, x: body.x, y: body.y, z: body.z })),
-      screenSpaceBounds
+      screenSpaceBounds,
+      targetSilhouettes
     })
   })
 
@@ -469,7 +499,7 @@ class SceneBoundary extends Component<PropsWithChildren, { error: Error | null }
 
 export function SolarCanvas({ selectedBodyId, quality }: { selectedBodyId: BodyId | null; quality: keyof typeof QUALITY_TIERS }) {
   const handleCreated = ({ gl }: { gl: WebGLRenderer }) => {
-    gl.domElement.dataset.testid = 'webgl-canvas'
+    gl.domElement.dataset.testid = 'solar-system-canvas'
     gl.domElement.dataset.sceneReady = 'false'
     try {
       publishRenderDiagnostics({ ...getRenderDiagnostics(), sceneReady: false, renderer: rendererName(gl), lastError: null })

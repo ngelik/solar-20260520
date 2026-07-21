@@ -2,6 +2,8 @@
 
 Orbitarium is a browser-only, interactive field guide to the Solar System. It uses a local React, React Three Fiber, and Three.js scene with bundled WebP textures; no account, API, or runtime third-party request is required.
 
+> **Project note:** Orbitarium is a testing and learning project created during development of [Brain Hands](https://github.com/ngelik/brain-hands). It exercises Brain Hands' approval-gated planning, implementation, verification, recovery, and GitHub delivery workflow on a visually demanding browser application.
+
 ## Prerequisites and setup
 
 - Node.js 20 or newer and npm.

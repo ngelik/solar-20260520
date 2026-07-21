@@ -17,6 +17,13 @@ export interface RenderScreenBounds {
   readonly visible: boolean
 }
 
+export interface RenderSilhouetteSample {
+  readonly x: number
+  readonly y: number
+  readonly depth: number
+  readonly visible: boolean
+}
+
 export interface RenderDiagnostics {
   readonly sceneReady: boolean
   readonly renderer: string
@@ -24,6 +31,7 @@ export interface RenderDiagnostics {
   readonly simulationTime: number
   readonly bodyPositions: readonly RenderBodyDiagnostic[]
   readonly screenSpaceBounds: Readonly<Record<string, RenderScreenBounds>>
+  readonly targetSilhouettes: Readonly<Record<string, readonly RenderSilhouetteSample[]>>
   readonly frameCount: number
   readonly qualityTier: string
   readonly interactionState: string
@@ -38,6 +46,7 @@ const emptyDiagnostics: RenderDiagnostics = Object.freeze({
   simulationTime: 0,
   bodyPositions: [],
   screenSpaceBounds: {},
+  targetSilhouettes: {},
   frameCount: 0,
   qualityTier: 'balanced',
   interactionState: 'inactive',
@@ -52,7 +61,8 @@ export function publishRenderDiagnostics(next: RenderDiagnostics): void {
     ...next,
     textureDimensions: Object.freeze({ ...next.textureDimensions }),
     bodyPositions: Object.freeze(next.bodyPositions.map((body) => Object.freeze({ ...body }))),
-    screenSpaceBounds: Object.freeze(Object.fromEntries(Object.entries(next.screenSpaceBounds).map(([key, bounds]) => [key, Object.freeze({ ...bounds })])))
+    screenSpaceBounds: Object.freeze(Object.fromEntries(Object.entries(next.screenSpaceBounds).map(([key, bounds]) => [key, Object.freeze({ ...bounds })]))),
+    targetSilhouettes: Object.freeze(Object.fromEntries(Object.entries(next.targetSilhouettes).map(([key, samples]) => [key, Object.freeze(samples.map((sample) => Object.freeze({ ...sample }))) ])))
   })
 }
 
