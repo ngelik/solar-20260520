@@ -241,7 +241,8 @@ function Planet({ body, texture, selected, onSelect, renderedPositions }: { body
   const simulation = getSolarFrame()
   const state = simulation.getBodyState(body.id)
   const radius = getPlanetPresentationRadius(body)
-  const emissive = {
+  const emissive = ({
+    sun: '#ffd18a',
     mercury: '#b9a590',
     venus: '#d58a69',
     earth: '#3d96a0',
@@ -250,7 +251,7 @@ function Planet({ body, texture, selected, onSelect, renderedPositions }: { body
     saturn: '#bd9e62',
     uranus: '#6bd2d9',
     neptune: '#5f7fda'
-  }[body.id]
+  } satisfies Record<BodyId, string>)[body.id]
   const target = useMemo(() => new Vector3(), [])
   const source = useMemo(() => new Vector3(), [])
   useFrame((_, delta) => {
@@ -468,7 +469,7 @@ class SceneBoundary extends Component<PropsWithChildren, { error: Error | null }
 
 export function SolarCanvas({ selectedBodyId, quality }: { selectedBodyId: BodyId | null; quality: keyof typeof QUALITY_TIERS }) {
   const handleCreated = ({ gl }: { gl: WebGLRenderer }) => {
-    gl.domElement.dataset.testid = 'solar-system-canvas'
+    gl.domElement.dataset.testid = 'webgl-canvas'
     gl.domElement.dataset.sceneReady = 'false'
     try {
       publishRenderDiagnostics({ ...getRenderDiagnostics(), sceneReady: false, renderer: rendererName(gl), lastError: null })

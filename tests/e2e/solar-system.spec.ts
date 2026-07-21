@@ -55,7 +55,7 @@ interface EvidenceReport {
   readonly horizontal_overflow: boolean
   readonly overlap_failures: readonly string[]
   readonly final_exact_origin_assertion_passed: boolean
-  readonly pixel_check: PixelCheck | null
+  readonly pixel_check: PixelCheck
   readonly failure_reasons: readonly string[]
   readonly skipped_reason: string | null
 }
@@ -81,7 +81,7 @@ interface EvidenceDraft {
   readonly expectedNetwork: readonly string[]
   observedSelectors: string[]
   missingSelectors: string[]
-  pixelCheck?: PixelCheck
+  pixelCheck: PixelCheck
   horizontalOverflow: boolean
   responsiveAssertionCompleted: boolean
   overlapFailures: EvidenceReport['overlap_failures']
@@ -132,6 +132,7 @@ function createEvidenceDraft(page: Page, state: 'initial' | 'black-hole', expect
     overlapFailures: forbiddenOverlaps.map(([first, second]) => overlapFailure(first, second)),
     unmatchedExpectedNetwork: [],
     finalExactOriginAssertionPassed: false,
+    pixelCheck: { sampled_pixels: 0, non_blank_pixels: 0, unique_colors: 0 },
     failureReasons: [],
     skippedReason: 'The corresponding browser state did not complete its real interaction gates.',
     visualStagePassed: false
@@ -158,12 +159,72 @@ function evidenceReport(draft: EvidenceDraft, consoleErrors: readonly string[], 
     failure_reasons: [...failureReasons],
     skipped_reason: skippedReason,
   }
-  report.pixel_check = draft.pixelCheck ?? null
+  report.pixel_check = draft.pixelCheck
   return report
 }
 
+function hasConcretePixelCheck(value: unknown): value is PixelCheck {
+  if (!value || typeof value !== 'object') return false
+  const pixelCheck = value as Partial<PixelCheck>
+  return ['sampled_pixels', 'non_blank_pixels', 'unique_colors'].every((key) => {
+    const metric = pixelCheck[key as keyof PixelCheck]
+    return Number.isInteger(metric) && (metric as number) >= 0
+  })
+}
+
+function normalizePixelCheck(value: unknown): PixelCheck {
+  const pixelCheck = value && typeof value === 'object' ? value as Partial<PixelCheck> : {}
+  const metric = (key: keyof PixelCheck): number => {
+    const value = pixelCheck[key]
+    return Number.isInteger(value) && (value as number) >= 0 ? value as number : 0
+  }
+  return { sampled_pixels: metric('sampled_pixels'), non_blank_pixels: metric('non_blank_pixels'), unique_colors: metric('unique_colors') }
+}
+
+function isLocalObservedUrl(value: string): boolean {
+  try {
+    return /^https?:\/\//.test(value) && new URL(value).origin === LOCAL_ORIGIN.slice(0, -1)
+  } catch {
+    return false
+  }
+}
+
+function isValidPassedReport(report: EvidenceReport): boolean {
+  const isBlackHole = report.check_name.startsWith('black-hole-')
+  const width = report.check_name.endsWith('-1920') ? 1920 : report.check_name.endsWith('-1280') ? 1280 : 0
+  const expectedSelectors = isBlackHole ? BLACK_HOLE_SELECTORS : INITIAL_SELECTORS
+  const expectedScreenshot = width === 0 ? '' : `artifacts/screenshots/solar-${width}-${isBlackHole ? 'black-hole' : 'initial'}.png`
+  const expectedNetwork = [LOCAL_ORIGIN, `${LOCAL_ORIGIN}assets/**`, `${LOCAL_ORIGIN}textures/**`]
+  return report.status === 'passed' &&
+    EVIDENCE_CHECK_ORDER.includes(report.check_name as typeof EVIDENCE_CHECK_ORDER[number]) &&
+    report.url === LOCAL_ORIGIN &&
+    report.screenshot_artifact === expectedScreenshot &&
+    report.viewport.width === width &&
+    report.viewport.height === (width === 1920 ? 1080 : 720) &&
+    JSON.stringify(report.expected_network) === JSON.stringify(expectedNetwork) &&
+    hasConcretePixelCheck(report.pixel_check) &&
+    report.pixel_check.sampled_pixels > 0 &&
+    report.pixel_check.non_blank_pixels > 0 &&
+    report.pixel_check.unique_colors > 0 &&
+    expectedSelectors.every((selector) => report.observed_selectors.includes(selector)) &&
+    report.missing_selectors.length === 0 &&
+    report.console_errors.length === 0 &&
+    report.console_error_policy === CONSOLE_ERROR_POLICY &&
+    report.observed_network.length > 0 &&
+    report.observed_network.every(isLocalObservedUrl) &&
+    report.missing_network.length === 0 &&
+    report.viewport.mobile === false &&
+    report.horizontal_overflow === false &&
+    report.overlap_failures.length === 0 &&
+    report.final_exact_origin_assertion_passed === true &&
+    report.failure_reasons.length === 0 &&
+    report.skipped_reason === null
+}
+
 function aggregateStatus(reports: readonly EvidenceReport[], completedCheckNames: readonly string[]): EvidenceStatus {
-  if (completedCheckNames.length === EVIDENCE_CHECK_ORDER.length && reports.length === EVIDENCE_CHECK_ORDER.length && EVIDENCE_CHECK_ORDER.every((name) => reports.some((report) => report.check_name === name && report.status === 'passed'))) return 'passed'
+  if (completedCheckNames.length === EVIDENCE_CHECK_ORDER.length &&
+    reports.length === EVIDENCE_CHECK_ORDER.length &&
+    EVIDENCE_CHECK_ORDER.every((name) => reports.some((report) => report.check_name === name && isValidPassedReport(report)))) return 'passed'
   if (reports.some((report) => report.status === 'failed')) return 'failed'
   return 'skipped'
 }
@@ -193,7 +254,7 @@ function skippedPlaceholder(checkName: typeof EVIDENCE_CHECK_ORDER[number]): Evi
     overlap_failures: [],
     missing_network: [LOCAL_ORIGIN, `${LOCAL_ORIGIN}assets/**`, `${LOCAL_ORIGIN}textures/**`],
     final_exact_origin_assertion_passed: false,
-    pixel_check: null,
+    pixel_check: { sampled_pixels: 0, non_blank_pixels: 0, unique_colors: 0 },
     failure_reasons: [],
     skipped_reason: 'This check was not reached during the current Playwright invocation.'
   }
@@ -268,7 +329,10 @@ async function writeEvidenceBundle(reports: readonly EvidenceReport[]): Promise<
   try {
     const current = await readCoordinationState()
     const state = current ?? initialCoordinationState()
-    const nextReports = { ...state.reports }
+    const nextReports = Object.fromEntries(EVIDENCE_CHECK_ORDER.map((name) => [name, {
+      ...state.reports[name],
+      pixel_check: normalizePixelCheck(state.reports[name]?.pixel_check)
+    }])) as Record<string, EvidenceReport>
     const completed = new Set(state.completed_check_names)
     for (const report of reports) {
       if (EVIDENCE_CHECK_ORDER.includes(report.check_name as typeof EVIDENCE_CHECK_ORDER[number])) {
@@ -537,9 +601,10 @@ if (runningUnderVitest) {
     expect(earth).toBeDefined()
     if (!earth) throw new Error('Earth diagnostic position was unavailable for cursor targeting')
     const earthScreen = projectOrbitalPointToCanvas(earth, canvasBounds)
+    const hoverOffset = Math.min(96, canvasBounds.width * 0.08)
     const hoverX = earthScreen.x < canvasBounds.x + canvasBounds.width / 2
-      ? earthScreen.x + Math.min(96, canvasBounds.width * 0.08)
-      : earthScreen.x - Math.min(96, canvasBounds.width * 0.08)
+      ? earthScreen.x + hoverOffset
+      : earthScreen.x - hoverOffset
     const hoverY = Math.min(canvasBounds.y + canvasBounds.height - 12, Math.max(canvasBounds.y + 12, earthScreen.y))
     await page.mouse.move(hoverX, hoverY)
     await expect.poll(async () => (await diagnostics(page))?.interactionState, { timeout: 5_000 }).toBe('hover-attractor')
@@ -566,7 +631,12 @@ if (runningUnderVitest) {
     expect(hoverFrameDifference).toBeGreaterThan(0.002)
 
     activeDraft = blackHoleDraft
-    await page.mouse.click(hoverX, hoverY)
+    // Keep the attractor active, but click a guaranteed empty canvas location.
+    // Clicking the nearby body itself marks the pointer gesture as a planet
+    // selection, which intentionally prevents the canvas black-hole gesture.
+    const clickX = canvasBounds.x + canvasBounds.width / 2
+    const clickY = canvasBounds.y + 16
+    await page.mouse.click(clickX, clickY)
     // Install the collector immediately after the real click, before any
     // selector or readiness waits. Sampling inside the production-preview
     // page avoids a race between serialized Playwright evaluations and the
@@ -707,7 +777,8 @@ if (runningUnderVitest) {
     initialDraft.unmatchedExpectedNetwork = [...unmatchedExpectedNetworkPatterns(initialDraft.expectedNetwork, observedHttpRequests)]
     blackHoleDraft.unmatchedExpectedNetwork = [...unmatchedExpectedNetworkPatterns(blackHoleDraft.expectedNetwork, observedHttpRequests)]
     const reports = [initialDraft, blackHoleDraft].map((draft) => {
-      const passed = finalAssertionsPassed && screenshotsWritten && draft.visualStagePassed && draft.missingSelectors.length === 0 && draft.pixelCheck !== undefined && draft.responsiveAssertionCompleted && !draft.horizontalOverflow && draft.overlapFailures.length === 0 && draft.unmatchedExpectedNetwork.length === 0 && draft.finalExactOriginAssertionPassed && observedErrors.length === 0
+      const realPixelCheck = hasConcretePixelCheck(draft.pixelCheck) && draft.pixelCheck.sampled_pixels > 0 && draft.pixelCheck.non_blank_pixels > 0 && draft.pixelCheck.unique_colors > 0
+      const passed = finalAssertionsPassed && screenshotsWritten && draft.visualStagePassed && draft.missingSelectors.length === 0 && realPixelCheck && draft.responsiveAssertionCompleted && !draft.horizontalOverflow && draft.overlapFailures.length === 0 && draft.unmatchedExpectedNetwork.length === 0 && draft.finalExactOriginAssertionPassed && observedErrors.length === 0
       const status: EvidenceStatus = passed ? 'passed' : draft.failureReasons.length > 0 || draft.visualStagePassed ? 'failed' : 'skipped'
       const skippedReason = status === 'skipped' ? draft.skippedReason : null
       const failureReasons = status === 'failed' && draft.failureReasons.length === 0 ? ['The browser check did not reach every required final assertion.'] : draft.failureReasons

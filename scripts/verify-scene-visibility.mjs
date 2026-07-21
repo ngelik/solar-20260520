@@ -1,3 +1,5 @@
+/* global Blob, HTMLCanvasElement, atob, console, createImageBitmap, document, fetch, process, setTimeout, window */
+
 import { chromium } from '@playwright/test'
 import { spawn } from 'node:child_process'
 import { mkdir, rm, writeFile } from 'node:fs/promises'
@@ -13,7 +15,7 @@ const CHECKS = [
 const REQUIRED_BOUNDS = ['mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'saturn-rings']
 const SELECTORS = {
   shell: '[data-testid="solar-system-shell"]',
-  canvas: '[data-testid="solar-system-canvas"]',
+  canvas: '[data-testid="webgl-canvas"]',
   ready: '[data-scene-ready="true"]',
   blackHole: '[data-testid="black-hole-toggle"][aria-pressed="true"]'
 }
@@ -36,7 +38,7 @@ function emptyReport(check) {
     viewport: { width: check.width, height: check.height, mobile: false },
     horizontal_overflow: false,
     overlap_failures: [],
-    pixel_check: undefined,
+    pixel_check: { sampled_pixels: 0, non_blank_pixels: 0, unique_colors: 0 },
     failure_reasons: [],
     skipped_reason: 'The production-preview check did not complete.'
   }
@@ -65,7 +67,7 @@ async function diagnostics(page) {
 
 async function inspectCanvasPixels(page, bounds, captureBase64) {
   return page.evaluate(async ({ targetBounds, encodedCapture }) => {
-    const canvas = document.querySelector('[data-testid="solar-system-canvas"]')
+    const canvas = document.querySelector('[data-testid="webgl-canvas"]')
     if (!(canvas instanceof HTMLCanvasElement)) throw new Error('The real WebGL canvas was not found')
     const canvasRect = canvas.getBoundingClientRect()
     if (canvasRect.width <= 0 || canvasRect.height <= 0) throw new Error('The real WebGL canvas had no measurable CSS bounds')
