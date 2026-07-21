@@ -13,6 +13,7 @@ export interface SolarStoreState {
   readonly interaction: InteractionMode
   readonly consumedBodyIds: readonly BodyId[]
   readonly cameraResetToken: number
+  readonly fullSceneResetToken: number
   readonly setPaused: (paused: boolean) => void
   readonly setSpeed: (speed: number) => void
   readonly selectBody: (bodyId: BodyId | null) => void
@@ -21,6 +22,7 @@ export interface SolarStoreState {
   readonly setHoverAttractor: (enabled: boolean) => void
   readonly triggerBlackHole: () => void
   readonly recordConsumption: (bodyId: BodyId) => void
+  readonly resetCamera: () => void
   readonly resetScene: () => void
 }
 
@@ -33,6 +35,7 @@ export const useSolarStore = create<SolarStoreState>((set, get) => ({
   interaction: 'inactive',
   consumedBodyIds: [],
   cameraResetToken: 0,
+  fullSceneResetToken: 0,
   setPaused: (paused) => {
     simulationEngine.setPaused(paused)
     const currentInteraction = get().interaction
@@ -72,6 +75,7 @@ export const useSolarStore = create<SolarStoreState>((set, get) => ({
       interaction: 'absorption',
       consumedBodyIds: state.consumedBodyIds.includes(bodyId) ? state.consumedBodyIds : [...state.consumedBodyIds, bodyId]
     })),
+  resetCamera: () => set((state) => ({ cameraResetToken: state.cameraResetToken + 1 })),
   resetScene: () => {
     simulationEngine.reset()
     set((state) => ({
@@ -82,7 +86,7 @@ export const useSolarStore = create<SolarStoreState>((set, get) => ({
       quality: 'balanced',
       interaction: 'reset',
       consumedBodyIds: [],
-      cameraResetToken: state.cameraResetToken + 1
+      fullSceneResetToken: state.fullSceneResetToken + 1
     }))
   }
 }))

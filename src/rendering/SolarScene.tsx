@@ -8,7 +8,7 @@ import { getSolarFrame, useSolarStore } from '../state/solarStore'
 import { getRenderDiagnostics, installDiagnosticsGetter, publishRenderDiagnostics } from './debugBridge'
 import { configureTexture, MAX_ANISOTROPY, MAX_DPR, QUALITY_TIERS, TEXTURE_CATALOG } from './textureCatalog'
 import { BlackHole } from '../effects/BlackHole'
-import { PointerGravity, pointerGravityPosition } from '../interactions/PointerGravity'
+import { markPlanetPointerGesture, PointerGravity, pointerGravityPosition } from '../interactions/PointerGravity'
 
 export const DIAGNOSTICS_INTERVAL_SECONDS = 0.25
 const FULL_TURN_RADIANS = Math.PI * 2
@@ -73,7 +73,7 @@ function Planet({ body, texture, selected, onSelect }: { body: BodyDefinition; t
     const material = mesh.current.material
     if (!Array.isArray(material) && 'opacity' in material) (material as MeshBasicMaterial).opacity = current.fade
   })
-  return <mesh ref={mesh} position={[state.x, state.y, state.z]} castShadow receiveShadow onPointerDown={(event) => { event.stopPropagation(); onSelect(body.id) }} onPointerOver={() => { document.body.style.cursor = 'crosshair' }} onPointerOut={() => { document.body.style.cursor = '' }}>
+  return <mesh ref={mesh} position={[state.x, state.y, state.z]} castShadow receiveShadow onPointerDown={(event) => { event.stopPropagation(); const pointerEvent = event.nativeEvent; if (pointerEvent.button === 0 && pointerEvent.isPrimary !== false) markPlanetPointerGesture(pointerEvent.pointerId); onSelect(body.id) }} onPointerOver={() => { document.body.style.cursor = 'crosshair' }} onPointerOut={() => { document.body.style.cursor = '' }}>
     <sphereGeometry args={[radius, body.id === 'jupiter' || body.id === 'saturn' ? 48 : 32, 24]} />
     <meshStandardMaterial map={texture ?? undefined} color={selected ? '#fff0be' : '#ffffff'} roughness={body.id === 'earth' ? 0.48 : body.id === 'jupiter' || body.id === 'saturn' ? 0.78 : 0.9} metalness={0.02} transparent />
   </mesh>

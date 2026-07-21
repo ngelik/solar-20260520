@@ -1,8 +1,37 @@
+interface Buffer {
+  readonly length: number
+  readonly [index: number]: number
+  readUInt32LE(offset: number): number
+  subarray(start: number, end?: number): Buffer
+  toString(encoding?: string): string
+}
+
+declare const Buffer: {
+  concat(chunks: readonly Buffer[]): Buffer
+}
+
+interface ChildProcessStream {
+  on(event: 'data', listener: (chunk: Buffer) => void): void
+}
+
+interface ChildProcessLike {
+  readonly stdout: ChildProcessStream
+  readonly stderr: ChildProcessStream
+  on(event: 'error', listener: (error: unknown) => void): void
+  on(event: 'close', listener: (code: number | null) => void): void
+}
+
 import { describe, expect, it } from 'vitest'
+// Node typings are intentionally not a project dependency. Keep these imports
+// runtime-only while the file-scoped contracts above type the exercised APIs.
+// @ts-ignore -- the test runs under Node/Vitest, whose runtime modules are present.
 import { readFile, stat } from 'node:fs/promises'
+// @ts-ignore -- see the note above.
 import { dirname, resolve } from 'node:path'
+// @ts-ignore -- see the note above.
 import { fileURLToPath } from 'node:url'
 import { BODY_CATALOG } from '../domain/bodies'
+// @ts-ignore -- see the note above.
 import { spawn } from 'node:child_process'
 import { calculateAxialRotationRadians, createDiagnosticsPublicationGate } from './SolarScene'
 import { MAX_ANISOTROPY, MAX_DPR, QUALITY_TIERS, TEXTURE_CATALOG } from './textureCatalog'
@@ -16,7 +45,7 @@ function decodeRgba(path: string): Promise<Buffer> {
     decoder.stdout.on('data', (chunk: Buffer) => chunks.push(chunk))
     decoder.stderr.on('data', () => undefined)
     decoder.on('error', reject)
-    decoder.on('close', (code) => {
+    decoder.on('close', (code: number | null) => {
       if (code === 0) resolvePromise(Buffer.concat(chunks))
       else reject(new Error(`ffmpeg exited with code ${code}`))
     })
